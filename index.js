@@ -11,6 +11,10 @@ const port = process.env.PORT || 5000;
 const url = process.env.MONGODB_URL;
 const JWT_SECRET = process.env.JWT_SECRET || "studynook_jwt_secret_key_2026_cat12";
 
+// Helper for default avatar
+const getAvatarUrl = (name) =>
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(name || "User")}&background=0D9488&color=fff&size=200`;
+
 // Middleware
 app.use(
   cors({
@@ -179,10 +183,15 @@ async function run() {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
+        const userPhoto =
+          photoURL && photoURL.trim() !== ""
+            ? photoURL.trim()
+            : getAvatarUrl(name);
+
         const newUser = {
-          name,
+          name: name.trim(),
           email: normalizedEmail,
-          photoURL,
+          photoURL: userPhoto,
           password: hashedPassword,
           bookings: [],
           createdAt: new Date(),
@@ -219,11 +228,13 @@ async function run() {
           return res.status(400).json({ message: "Invalid email or password" });
         }
 
+        const finalPhoto = user.photoURL || getAvatarUrl(user.name);
+
         const tokenPayload = {
           id: user._id.toString(),
           email: user.email,
           name: user.name,
-          photoURL: user.photoURL,
+          photoURL: finalPhoto,
         };
 
         const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "7d" });
@@ -242,7 +253,7 @@ async function run() {
             id: user._id.toString(),
             name: user.name,
             email: user.email,
-            photoURL: user.photoURL,
+            photoURL: finalPhoto,
           },
           token,
         });
@@ -263,28 +274,35 @@ async function run() {
         const normalizedEmail = email.toLowerCase().trim();
         let user = await usersCollection.findOne({ email: normalizedEmail });
 
+        const defaultUserPhoto = photoURL || getAvatarUrl(name || "Google User");
+
         if (!user) {
           const newUser = {
             name: name || "Google User",
             email: normalizedEmail,
-            photoURL: photoURL || "https://i.ibb.co/mR70B81/user-avatar.png",
+            photoURL: defaultUserPhoto,
             bookings: [],
             createdAt: new Date(),
           };
           const result = await usersCollection.insertOne(newUser);
           user = { _id: result.insertedId, ...newUser };
-        } else if (photoURL && !user.photoURL) {
+        } else {
+          // Update photo URL or name if user exists and photo was provided
+          const updatedPhoto = photoURL || user.photoURL || getAvatarUrl(user.name);
+          const updatedName = name || user.name;
           await usersCollection.updateOne(
             { _id: user._id },
-            { $set: { photoURL } }
+            { $set: { photoURL: updatedPhoto, name: updatedName } }
           );
+          user.photoURL = updatedPhoto;
+          user.name = updatedName;
         }
 
         const tokenPayload = {
           id: user._id.toString(),
           email: user.email,
           name: user.name,
-          photoURL: user.photoURL || photoURL,
+          photoURL: user.photoURL,
         };
 
         const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "7d" });
@@ -303,7 +321,7 @@ async function run() {
             id: user._id.toString(),
             name: user.name,
             email: user.email,
-            photoURL: user.photoURL || photoURL,
+            photoURL: user.photoURL,
           },
           token,
         });
@@ -325,7 +343,7 @@ async function run() {
             id: user._id.toString(),
             name: user.name,
             email: user.email,
-            photoURL: user.photoURL,
+            photoURL: user.photoURL || getAvatarUrl(user.name),
           },
         });
       } catch (error) {
